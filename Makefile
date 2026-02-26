@@ -12,6 +12,7 @@ install:
 	install -d $(ZSHDIR)
 	install -m 755 bin/pbak $(BINDIR)/pbak
 	install -m 644 lib/pbak/*.sh $(LIBDIR)/pbak/
+	install -m 644 lib/pbak/*.py $(LIBDIR)/pbak/
 	install -m 644 completions/pbak.zsh $(ZSHDIR)/_pbak
 	@echo "Done. Run 'pbak setup' to get started."
 
@@ -26,4 +27,5 @@ test:
 	@echo "Running basic checks..."
 	@bash -n bin/pbak && echo "  bin/pbak — syntax OK"
 	@for f in lib/pbak/*.sh; do bash -n "$$f" && echo "  $$f — syntax OK"; done
+	@python3 -m py_compile lib/pbak/albums.py && echo "  lib/pbak/albums.py — syntax OK"
 	@echo "All checks passed."

@@ -32,6 +32,8 @@ _pbak() {
         'dump:Copy photos from SD card to SSD'
         'upload:Upload photos from SSD to Immich'
         'status:Show backup status and configuration'
+        'sync:Sync primary SSD to a mirror SSD'
+        'albums:Sync LrC collections to Immich albums'
         'rehash:Rebuild hash database from SSD'
     )
 
@@ -65,6 +67,20 @@ _pbak() {
                         '--date[Specific date folder]:date:_pbak_date_folders' \
                         '--all[Upload all pending folders]' \
                         '--retry-failed[Retry failed uploads]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                sync)
+                    _arguments \
+                        '--from[Primary SSD volume name]:volume:_pbak_volumes' \
+                        '--to[Mirror SSD volume name]:volume:_pbak_volumes' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                albums)
+                    _arguments \
+                        '--collection[Sync a single collection by name]:name:' \
+                        '--no-metadata[Skip pick/rating metadata sync]' \
+                        '--no-stacks[Skip file stacking]' \
+                        '--prune[Remove assets not in LrC collection]' \
                         '(-h --help)'{-h,--help}'[Show help]'
                     ;;
                 rehash)

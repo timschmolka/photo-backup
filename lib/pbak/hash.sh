@@ -2,6 +2,8 @@
 # DB format: tab-separated, one line per file
 # <sha256>\t<source_path>\t<dest_path>\t<timestamp>\t<file_size_bytes>
 
+HASH_WORKERS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
 hash_db_file() {
     local f="$(config_dir)/hashes.db"
     [[ -f "$f" ]] || touch "$f"
@@ -13,12 +15,24 @@ hash_compute() {
     shasum -a 256 "$filepath" 2>/dev/null | cut -d ' ' -f 1
 }
 
+hash_compute_batch() {
+    local file_list="$1"
+    local output="$2"
+    xargs -P "$HASH_WORKERS" -I {} shasum -a 256 {} < "$file_list" > "$output" 2>/dev/null
+}
+
 hash_exists() {
     local hash="$1"
     local db
     db="$(hash_db_file)"
     # Tab after hash prevents prefix matches
     grep -qF "${hash}	" "$db" 2>/dev/null
+}
+
+hash_lookup_precomputed() {
+    local filepath="$1"
+    local cache="$2"
+    grep -F "$filepath" "$cache" 2>/dev/null | head -1 | cut -d ' ' -f 1
 }
 
 hash_add() {
@@ -93,39 +107,48 @@ hash_rebuild() {
     ui_header "Rebuilding hash database"
     ui_info "Scanning: ${ssd_root}"
 
-    local total=0
-    while IFS= read -r -d '' _; do
-        ((total++))
-    done < <(find "$ssd_root" -type f -print0 2>/dev/null)
+    local file_list
+    file_list=$(mktemp)
+    find "$ssd_root" -type f 2>/dev/null > "$file_list"
+    local total
+    total=$(wc -l < "$file_list" | tr -d ' ')
 
     if [[ $total -eq 0 ]]; then
+        rm -f "$file_list"
         ui_warn "No files found in ${ssd_root}"
         return 0
     fi
 
-    ui_info "Found ${total} files to hash"
+    ui_info "Found ${total} files to hash (${HASH_WORKERS} workers)"
 
     if [[ -s "$db" ]]; then
         cp "$db" "${db}.bak"
         ui_dim "  Existing DB backed up to ${db}.bak"
     fi
 
+    ui_spinner_start "Hashing files..."
+    local hash_output
+    hash_output=$(mktemp)
+    hash_compute_batch "$file_list" "$hash_output"
+    ui_spinner_stop
+
     : > "$db"
-
+    local ts
+    ts=$(utils_timestamp)
     local count=0
-    while IFS= read -r -d '' filepath; do
-        ((count++))
-        ui_progress "$count" "$total" "$(basename "$filepath")"
 
-        local hash size ts
-        hash=$(hash_compute "$filepath")
+    while IFS= read -r line; do
+        # shasum output: "<hash>  <filepath>"  (two spaces)
+        local hash="${line%% *}"
+        local filepath="${line#*  }"
+        local size
         size=$(utils_file_size "$filepath")
-        ts=$(utils_timestamp)
 
         # Original source path is unknown when rebuilding from SSD
         printf '%s\t%s\t%s\t%s\t%s\n' "$hash" "(rebuilt)" "$filepath" "$ts" "$size" >> "$db"
-    done < <(find "$ssd_root" -type f -print0 2>/dev/null)
+        ((count++))
+    done < "$hash_output"
 
-    ui_progress_done
+    rm -f "$file_list" "$hash_output"
     ui_success "Hash database rebuilt: ${count} files indexed."
 }

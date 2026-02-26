@@ -3,3 +3,4 @@
 *.swo
 *~
 .claude/
+__pycache__/

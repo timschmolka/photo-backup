@@ -14,6 +14,7 @@ ${UI_BOLD}Flags:${UI_RESET}
   --date <YY/MM/DD> Upload a specific date folder only
   --all             Upload all pending (un-uploaded) folders
   --retry-failed    Retry previously failed uploads
+  --force           Re-upload all folders (immich-go skips server-side dupes)
   -h, --help        Show this help
 
 ${UI_BOLD}Global flags also apply:${UI_RESET}  --dry-run, --verbose
@@ -183,6 +184,7 @@ pbak_upload() {
     local date_filter=""
     local upload_all=0
     local retry_failed=0
+    local force=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -190,6 +192,7 @@ pbak_upload() {
             --date)         date_filter="$2"; shift 2 ;;
             --all)          upload_all=1; shift ;;
             --retry-failed) retry_failed=1; shift ;;
+            --force)        force=1; shift ;;
             -h|--help)      _upload_usage; return 0 ;;
             *) ui_error "Unknown flag: $1"; _upload_usage; return 1 ;;
         esac
@@ -228,7 +231,13 @@ pbak_upload() {
 
     local folders=()
 
-    if [[ -n "$date_filter" ]]; then
+    if [[ $force -eq 1 ]]; then
+        ui_warn "Force mode: ignoring upload state, immich-go will skip server-side dupes."
+        while IFS= read -r folder; do
+            folders+=("$folder")
+        done < <(upload_list_folders "$ssd_root")
+
+    elif [[ -n "$date_filter" ]]; then
         local target="${ssd_root}/${date_filter}"
         if [[ ! -d "$target" ]]; then
             ui_error "Folder not found: ${target}"
@@ -320,8 +329,13 @@ EOF
     if [[ -n "${PBAK_SSD_VOLUME:-}" ]] && [[ -d "/Volumes/${PBAK_SSD_VOLUME}" ]]; then
         ssd_status="${UI_GREEN}mounted${UI_RESET}"
     fi
+    local mirror_status="not mounted"
+    if [[ -n "${PBAK_MIRROR_VOLUME:-}" ]] && [[ -d "/Volumes/${PBAK_MIRROR_VOLUME}" ]]; then
+        mirror_status="${UI_GREEN}mounted${UI_RESET}"
+    fi
     printf '  %-24s %s (%b)\n' "SD card:" "${PBAK_SD_VOLUME:-<not set>}" "$sd_status"
     printf '  %-24s %s (%b)\n' "SSD:" "${PBAK_SSD_VOLUME:-<not set>}" "$ssd_status"
+    printf '  %-24s %s (%b)\n' "Mirror SSD:" "${PBAK_MIRROR_VOLUME:-<not set>}" "$mirror_status"
     echo
 
     local hcount

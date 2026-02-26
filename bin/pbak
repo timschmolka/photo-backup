@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PBAK_VERSION="0.1.0"
+PBAK_VERSION="1.0.0"
 
 # Follows symlinks so lib/ is found when installed via Homebrew or `make install`
 _pbak_resolve() {
@@ -25,6 +25,8 @@ source "${PBAK_LIB}/config.sh"
 source "${PBAK_LIB}/hash.sh"
 source "${PBAK_LIB}/dump.sh"
 source "${PBAK_LIB}/upload.sh"
+source "${PBAK_LIB}/sync.sh"
+source "${PBAK_LIB}/albums.sh"
 
 DRY_RUN=0
 VERBOSE=0
@@ -42,6 +44,8 @@ ${UI_BOLD}Commands:${UI_RESET}
   dump        Copy photos from SD card to SSD (with deduplication)
   upload      Upload photos from SSD to Immich via immich-go
   status      Show backup status and configuration summary
+  sync        Sync primary SSD to a mirror SSD
+  albums      Sync Lightroom Classic collections to Immich albums
   rehash      Rebuild the hash database from existing SSD files
 
 ${UI_BOLD}Global Flags:${UI_RESET}
@@ -56,6 +60,8 @@ ${UI_BOLD}Examples:${UI_RESET}
   pbak dump --dry-run         # Preview what would be copied
   pbak upload --all           # Upload all pending folders to Immich
   pbak status                 # Check backup state
+  pbak albums                 # Sync LrC collections to Immich albums
+  pbak albums --dry-run       # Preview album sync
   pbak rehash                 # Rebuild hash DB from SSD contents
 EOF
 }
@@ -90,6 +96,8 @@ case "$SUBCOMMAND" in
     dump)    pbak_dump "$@" ;;
     upload)  pbak_upload "$@" ;;
     status)  pbak_status "$@" ;;
+    sync)    pbak_sync "$@" ;;
+    albums)  pbak_albums "$@" ;;
     rehash)  pbak_rehash "$@" ;;
     help)    pbak_usage ;;
     *)       ui_error "Unknown command: ${SUBCOMMAND}"; echo; pbak_usage; exit 1 ;;

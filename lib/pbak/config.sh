@@ -31,6 +31,7 @@ PBAK_IMMICH_API_KEY="${PBAK_IMMICH_API_KEY:-}"
 
 PBAK_SD_VOLUME="${PBAK_SD_VOLUME:-}"
 PBAK_SSD_VOLUME="${PBAK_SSD_VOLUME:-}"
+PBAK_MIRROR_VOLUME="${PBAK_MIRROR_VOLUME:-}"
 
 PBAK_DUMP_EXTENSIONS_INCLUDE="${PBAK_DUMP_EXTENSIONS_INCLUDE:-}"
 PBAK_DUMP_EXTENSIONS_EXCLUDE="${PBAK_DUMP_EXTENSIONS_EXCLUDE:-}"
@@ -40,6 +41,8 @@ PBAK_UPLOAD_EXTENSIONS_EXCLUDE="${PBAK_UPLOAD_EXTENSIONS_EXCLUDE:-}"
 
 PBAK_CONCURRENT_TASKS="${PBAK_CONCURRENT_TASKS:-4}"
 PBAK_UPLOAD_PAUSE_JOBS="${PBAK_UPLOAD_PAUSE_JOBS:-true}"
+
+PBAK_LRC_CATALOG="${PBAK_LRC_CATALOG:-}"
 CONF
 
     chmod 600 "$cf"
@@ -119,7 +122,8 @@ EOF
     fi
 
     PBAK_SD_VOLUME=$(ui_prompt "  Default SD card volume name" "${PBAK_SD_VOLUME:-}")
-    PBAK_SSD_VOLUME=$(ui_prompt "  Default SSD volume name" "${PBAK_SSD_VOLUME:-}")
+    PBAK_SSD_VOLUME=$(ui_prompt "  Default SSD volume name (primary)" "${PBAK_SSD_VOLUME:-}")
+    PBAK_MIRROR_VOLUME=$(ui_prompt "  Mirror SSD volume name (leave empty to skip)" "${PBAK_MIRROR_VOLUME:-}")
     echo
 
     ui_info "${UI_BOLD}File Extensions${UI_RESET}"
@@ -153,17 +157,24 @@ EOF
     fi
 
     echo
+    ui_info "${UI_BOLD}Lightroom Classic${UI_RESET}"
+    PBAK_LRC_CATALOG=$(ui_prompt "  Catalog path (.lrcat file, leave empty to skip)" \
+        "${PBAK_LRC_CATALOG:-}")
+
+    echo
     ui_header "Summary"
     printf '  %-28s %s\n' "Immich server:" "$PBAK_IMMICH_SERVER"
     printf '  %-28s %s\n' "API key:" "${PBAK_IMMICH_API_KEY:0:8}..."
     printf '  %-28s %s\n' "SD card volume:" "$PBAK_SD_VOLUME"
-    printf '  %-28s %s\n' "SSD volume:" "$PBAK_SSD_VOLUME"
+    printf '  %-28s %s\n' "SSD volume (primary):" "$PBAK_SSD_VOLUME"
+    printf '  %-28s %s\n' "Mirror SSD volume:" "${PBAK_MIRROR_VOLUME:-(none)}"
     printf '  %-28s %s\n' "Dump include:" "$PBAK_DUMP_EXTENSIONS_INCLUDE"
     printf '  %-28s %s\n' "Dump exclude:" "${PBAK_DUMP_EXTENSIONS_EXCLUDE:-(none)}"
     printf '  %-28s %s\n' "Upload include:" "$PBAK_UPLOAD_EXTENSIONS_INCLUDE"
     printf '  %-28s %s\n' "Upload exclude:" "${PBAK_UPLOAD_EXTENSIONS_EXCLUDE:-(none)}"
     printf '  %-28s %s\n' "Concurrent tasks:" "$PBAK_CONCURRENT_TASKS"
     printf '  %-28s %s\n' "Pause Immich jobs:" "$PBAK_UPLOAD_PAUSE_JOBS"
+    printf '  %-28s %s\n' "LrC catalog:" "${PBAK_LRC_CATALOG:-(not set)}"
     echo
 
     if ui_confirm "  Save configuration?" "y"; then

@@ -116,11 +116,11 @@ utils_timestamp() {
 utils_human_size() {
     local bytes="$1"
     if [[ $bytes -ge 1073741824 ]]; then
-        printf '%.1f GB' "$(echo "scale=1; ${bytes}/1073741824" | bc)"
+        printf '%d.%d GB' "$((bytes / 1073741824))" "$(( (bytes % 1073741824) * 10 / 1073741824 ))"
     elif [[ $bytes -ge 1048576 ]]; then
-        printf '%.1f MB' "$(echo "scale=1; ${bytes}/1048576" | bc)"
+        printf '%d.%d MB' "$((bytes / 1048576))" "$(( (bytes % 1048576) * 10 / 1048576 ))"
     elif [[ $bytes -ge 1024 ]]; then
-        printf '%.1f KB' "$(echo "scale=1; ${bytes}/1024" | bc)"
+        printf '%d.%d KB' "$((bytes / 1024))" "$(( (bytes % 1024) * 10 / 1024 ))"
     else
         printf '%d B' "$bytes"
     fi

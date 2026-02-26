@@ -165,9 +165,15 @@ dump_select_ssd() {
 dump_process_file() {
     local src_file="$1"
     local ssd_dump_root="$2"
+    local precomputed_hashes="${3:-}"
 
     local hash
-    hash=$(hash_compute "$src_file") || return 2
+    if [[ -n "$precomputed_hashes" ]]; then
+        hash=$(hash_lookup_precomputed "$src_file" "$precomputed_hashes")
+    fi
+    if [[ -z "${hash:-}" ]]; then
+        hash=$(hash_compute "$src_file") || return 2
+    fi
 
     if hash_exists "$hash"; then
         utils_log DEBUG "Skipping (duplicate): ${src_file}"
@@ -319,6 +325,15 @@ pbak_dump() {
 
     echo
 
+    ui_info "Pre-hashing source files (${HASH_WORKERS} workers)..."
+    local hash_cache
+    hash_cache=$(mktemp)
+    ui_spinner_start "Hashing..."
+    hash_compute_batch "$tmpfile" "$hash_cache"
+    ui_spinner_stop
+    ui_success "Hashing complete."
+    echo
+
     local copied=0 skipped=0 errors=0
     local count=0
     local copied_bytes=0
@@ -328,7 +343,7 @@ pbak_dump() {
         ui_progress "$count" "$total" "$(basename "$filepath")"
 
         local status=0
-        dump_process_file "$filepath" "$ssd_dump_root" || status=$?
+        dump_process_file "$filepath" "$ssd_dump_root" "$hash_cache" || status=$?
 
         case $status in
             0) ((copied++))
@@ -351,5 +366,16 @@ pbak_dump() {
         ui_error "Errors:  ${errors}"
     fi
     echo
+    rm -f "$hash_cache"
     ui_info "Hash DB: $(hash_count) total files tracked"
+
+    if [[ -n "${PBAK_MIRROR_VOLUME:-}" ]] && \
+       utils_require_volume "$PBAK_MIRROR_VOLUME" 2>/dev/null; then
+        echo
+        ui_info "Mirror SSD '${PBAK_MIRROR_VOLUME}' detected — syncing..."
+        pbak_sync --from "$ssd_name" --to "$PBAK_MIRROR_VOLUME"
+    elif [[ -n "${PBAK_MIRROR_VOLUME:-}" ]]; then
+        echo
+        ui_dim "Mirror SSD '${PBAK_MIRROR_VOLUME}' not mounted — skipping sync."
+    fi
 }
