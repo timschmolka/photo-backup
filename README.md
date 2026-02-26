@@ -45,10 +45,10 @@ Wraps [immich-go](https://github.com/simulot/immich-go) with interactive volume 
 | Date folder structure | Primary SSD | SSD → Immich |
 | Hash dedup database | Primary SSD (`.pbak/hashes.db`) | Local only |
 | Upload state tracking | Primary SSD (`.pbak/upload-state/`) | Local only |
-| Albums / collections | LrC catalog | LrC → Immich (one-way) |
+| Albums / collections | LrC catalog | LrC → Immich (one-way, promoted to best format) |
 | Picks → favorites | LrC catalog | LrC → Immich (one-way) |
 | Star ratings | LrC catalog | LrC → Immich (one-way) |
-| File stacking | Immich (derived from filename stems) | Computed at sync time |
+| File stacking | Immich (derived from filename stems) | Computed at sync time, merged incrementally |
 | Mirror SSD | Primary SSD | Primary → Mirror (one-way, additive) |
 
 All syncs are **one-way**. Immich and the mirror SSD are treated as downstream consumers — they never write back to the SSD or LrC catalog.
@@ -83,7 +83,7 @@ All three are uploaded to Immich independently. `pbak albums` groups them by nor
 TIF (1) > DNG (2) > RAW (3) > JPG (4) > HEIC (5)
 ```
 
-The highest-priority format becomes the stack cover in Immich.
+The highest-priority format becomes the stack cover in Immich. Album references are automatically promoted to the best format — if LrC has the ARW in a collection but a TIF exists, the album points to the TIF. Lower-quality siblings are removed from the album since the stack groups them.
 
 ## Install
 
@@ -185,13 +185,41 @@ pbak albums
 
 ### Albums (LrC → Immich)
 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Phase 1 — Index    Fetch all Immich assets, build filename map │
+│  Phase 2 — Collect  Read LrC regular + smart collections       │
+│  Phase 3 — Albums   Match files → create/update Immich albums  │
+│  Phase 4 — Meta     Picks → favorites, ratings 1–5             │
+│  Phase 5 — Stacks   Group by stem, set format-priority cover   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 1. Reads regular and smart collections from the LrC catalog (SQLite)
-2. Fetches all Immich assets and builds a filename-based index
+2. Fetches all Immich assets and builds a filename-based index (own assets only)
 3. Matches LrC files to Immich assets by `originalFileName`
-4. Creates or updates Immich albums for each collection
-5. Syncs LrC picks → Immich favorites and LrC ratings → Immich ratings
-6. Stacks related files (TIF/DNG/ARW) by normalized filename stem, with format priority: TIF > DNG > RAW > JPG > HEIC
-7. Idempotent — safe to run repeatedly without duplicating albums or assets
+4. **Promotes album references** to the best available format — if a collection contains `DSC04027.ARW` but a `DSC04027.tif` also exists in Immich, the album points to the TIF. Lower-quality duplicates are automatically cleaned up.
+5. Creates or updates Immich albums for each collection
+6. Syncs LrC picks → Immich favorites and LrC star ratings → Immich ratings
+7. Stacks related files (TIF/DNG/ARW) by normalized filename stem. Merges into existing partial stacks when new formats are added.
+8. Idempotent — safe to run repeatedly without duplicating albums or assets
+
+### Smart Collection Support
+
+`pbak albums` parses Lightroom's smart collection rules (stored as Lua tables in the catalog) and translates them to SQL queries. Supported criteria:
+
+| Criteria | Operations |
+|----------|-----------|
+| Capture time | before, after, equals, in last N days/months |
+| Pick flag | picked, unflagged, rejected |
+| Star rating | equals, greater-or-equal |
+| File format | RAW, TIFF, JPG, HEIC, VIDEO |
+| Keywords | contains, is empty |
+| Focal length | less than, greater than |
+| Color label | Red, Yellow, Green, Blue, Purple |
+| Touch time | modified in last N days/months |
+
+Smart collections with `intersect` or `union` combine modes are both supported.
 
 ## Project Structure
 
