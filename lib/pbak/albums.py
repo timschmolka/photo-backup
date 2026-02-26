@@ -376,6 +376,33 @@ def run(server: str, api_key: str, catalog_path: str,
 
     album_by_name = {a["albumName"]: a["id"] for a in albums_list}
 
+    # Build promotion map: asset_id → best asset_id in same stem group
+    # So albums always reference the highest-quality format (TIF > DNG > RAW > JPG)
+    promote: dict[str, str] = {}
+    stem_best: dict[str, str] = {}  # stem → best asset_id
+    for filename, assets in asset_index.items():
+        for a in assets:
+            fn = a["originalFileName"]
+            stem = normalize_stem(fn)
+            ext = fn.rsplit(".", 1)[-1] if "." in fn else ""
+            prio = format_priority(ext)
+            if stem not in stem_best:
+                stem_best[stem] = (a["id"], prio)
+            elif prio < stem_best[stem][1]:
+                stem_best[stem] = (a["id"], prio)
+
+    # Map every asset in a stem group to the best one
+    for filename, assets in asset_index.items():
+        for a in assets:
+            stem = normalize_stem(a["originalFileName"])
+            best_id, _ = stem_best.get(stem, (a["id"], 9))
+            if best_id != a["id"]:
+                promote[a["id"]] = best_id
+
+    promoted_count = len(promote)
+    if promoted_count > 0:
+        debug(f"Promotion map: {promoted_count} assets will be promoted to best format")
+
     # ── Phase 2: Enumerate LrC collections ────────────────────────────
 
     collections = catalog.list_collections()
@@ -425,9 +452,14 @@ def run(server: str, api_key: str, catalog_path: str,
                 unmatched += 1
                 continue
             aid = assets[0]["id"]
+            # Promote to best format in stem group (TIF > DNG > RAW > JPG)
+            aid = promote.get(aid, aid)
             matched_ids.append(aid)
             if sync_metadata:
                 meta_records.append((aid, f["pick"], f["rating"]))
+
+        # Deduplicate — multiple LrC files may promote to the same best asset
+        matched_ids = list(dict.fromkeys(matched_ids))
 
         if not matched_ids:
             dim(f"  No assets matched in Immich ({len(files)} files in LrC)")
@@ -466,6 +498,25 @@ def run(server: str, api_key: str, catalog_path: str,
                 except Exception as e:
                     error(f"  Failed to add assets to '{coll_name}': {e}")
                     errors += 1
+
+            # Remove lower-quality duplicates (e.g., ARW when TIF is now in album)
+            if not dry_run:
+                try:
+                    album_data = api.album_get(album_id)
+                    current_ids = {a["id"] for a in album_data.get("assets", [])}
+                    matched_set = set(matched_ids)
+                    # Find assets in album that are lower-priority siblings of promoted ones
+                    demoted = []
+                    for cid in current_ids:
+                        if cid not in matched_set and cid in promote:
+                            # This asset was in the album but its best sibling is now there too
+                            if promote[cid] in current_ids:
+                                demoted.append(cid)
+                    if demoted:
+                        api.album_remove_assets(album_id, demoted)
+                        dim(f"  Cleaned up {len(demoted)} lower-quality duplicate(s)")
+                except Exception:
+                    debug(f"Failed to clean up duplicates in: {coll_name}")
 
             # Prune
             if do_prune and album_id and not dry_run:
